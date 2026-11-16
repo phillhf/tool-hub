@@ -90,6 +90,18 @@ def make_title(repo, prefix):
     return re.sub(r"[-_]+", " ", prefix)
 
 
+RECHECK_SECONDS = 6 * 3600
+
+
+def _still_without_setup(seen, pushed_at, now=None):
+    """Repo ohne Setup überspringen – aber nur bis zum nächsten Push und höchstens 6 Stunden lang.
+
+    Ein Release kann auch ohne Push dazukommen (z. B. von Hand oder per Workflow für einen alten Tag)."""
+    if not isinstance(seen, dict) or seen.get("pushed_at") != pushed_at:
+        return False
+    return (now or time.time()) - seen.get("checked", 0) < RECHECK_SECONDS
+
+
 def discover(api, no_setup):
     """Liefert (Tools, Release des Tool-Hub selbst). no_setup merkt sich Repos ohne Setup bis zum nächsten Push."""
     repos = [r for r in api.repos() if not r.get("archived")]
@@ -99,7 +111,7 @@ def discover(api, no_setup):
         name = repo["name"]
         if name.lower() == SELF_REPO:
             own = repo
-        elif no_setup.get(name) != repo.get("pushed_at"):
+        elif not _still_without_setup(no_setup.get(name), repo.get("pushed_at")):
             todo.append(repo)
 
     def fetch(repo):
@@ -114,7 +126,7 @@ def discover(api, no_setup):
         name = repo["name"]
         prefix, asset = pick_setup(name, (release or {}).get("assets"))
         if not asset:
-            no_setup[name] = repo.get("pushed_at")
+            no_setup[name] = {"pushed_at": repo.get("pushed_at"), "checked": time.time()}
             continue
         no_setup.pop(name, None)
         tools.append(Tool(

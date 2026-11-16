@@ -151,10 +151,16 @@ class Discover(unittest.TestCase):
         self.assertTrue(found[0].private)
         self.assertEqual(found[0].latest, "1.5.0")
         self.assertEqual(own["tag_name"], "v1.1.0")
-        self.assertEqual(no_setup, {"DiCi": "b"})
+        self.assertEqual(list(no_setup), ["DiCi"])
         api.calls.clear()
         tools.discover(api, no_setup)
         self.assertNotIn("DiCi", api.calls)
+        # Neues Release ohne Push: spätestens nach 6 Stunden wird wieder nachgesehen
+        no_setup["DiCi"]["checked"] -= tools.RECHECK_SECONDS + 1
+        releases["DiCi"] = {"tag_name": "v1.0.0", "assets": [{"name": "DiCi-Setup-1.0.0.exe", "url": "u"}]}
+        found, _ = tools.discover(api, no_setup)
+        self.assertIn("DiCi", [t.repo for t in found])
+        self.assertNotIn("DiCi", no_setup)
 
 
 if __name__ == "__main__":
