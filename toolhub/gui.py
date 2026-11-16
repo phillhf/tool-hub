@@ -57,6 +57,7 @@ class App:
         except tk.TclError:
             pass
 
+        self._clean_downloads()
         self.settings = config.load("settings.json", {})
         self.settings.setdefault("theme", "auto")
         self.settings.setdefault("view", "grid")
@@ -95,6 +96,16 @@ class App:
         if start_hidden and self.tray and self.tray.ok:
             root.withdraw()
         self.refresh()
+
+    @staticmethod
+    def _clean_downloads():
+        """Reste früherer Downloads entfernen, z. B. das Setup der eigenen Aktualisierung."""
+        folder = config.downloads_dir()
+        for name in os.listdir(folder):
+            try:
+                os.remove(os.path.join(folder, name))
+            except OSError:
+                pass  # gerade in Benutzung – beim nächsten Start
 
     # ================= Aufbau
 
