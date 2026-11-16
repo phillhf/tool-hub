@@ -6,7 +6,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
-from . import SELF_REPO, registry, winrun
+from . import SELF_REPO, github, registry, winrun
 
 SETUP_RE = re.compile(r"^(?P<prefix>.+?)-Setup-v?(?P<version>\d+(?:\.\d+)*)\.exe$", re.IGNORECASE)
 SILENT = ["/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"]
@@ -56,6 +56,8 @@ class Tool:
     latest: str
     asset: dict
     prefix: str
+    published: str = ""
+    release_url: str = ""
     installed: registry.Installed | None = None
     extra_installs: list = field(default_factory=list)
 
@@ -138,6 +140,8 @@ def discover(api, no_setup):
             latest=(release.get("tag_name") or "").lstrip("vV"),
             asset={k: asset.get(k) for k in ("name", "url", "digest", "size")},
             prefix=prefix,
+            published=(release.get("published_at") or "")[:10],
+            release_url=release.get("html_url") or repo.get("html_url", ""),
         ))
     tools.sort(key=lambda t: t.title.lower())
     return tools, own_release
@@ -224,12 +228,17 @@ def start_target(entry, title, start_menu_dirs=None):
 
 # ---- Aktionen (laufen im Hintergrund-Thread)
 
-def install(api, tool, folder, silent, learned, progress=lambda text, percent=None: None):
-    progress(f"{tool.title}: lade {tool.asset['name']} …", 0)
-    path = api.download(tool.asset, folder, lambda p: progress(f"{tool.title}: lade {tool.asset['name']} …", p))
+def install(api, tool, folder, silent, learned, report=lambda phase, done=None, total=None: None,
+            cancelled=lambda: False):
+    """Lädt das Setup und führt es aus. report(phase, done, total) mit phase "download" oder "setup"."""
+    report("download", 0, tool.asset.get("size") or 0)
+    try:
+        path = api.download(tool.asset, folder, lambda done, total: report("download", done, total), cancelled)
+    except github.DownloadCancelled as exc:
+        raise ActionCancelled("Download abgebrochen.") from exc
     try:
         before = {e.key for e in registry.entries()}
-        progress(f"{tool.title}: Setup läuft …", None)
+        report("setup")
         try:
             code = winrun.run_and_wait(path, SILENT if silent else [])
         except winrun.Cancelled as exc:
@@ -249,12 +258,12 @@ def install(api, tool, folder, silent, learned, progress=lambda text, percent=No
             pass
 
 
-def uninstall(tool, learned, progress=lambda text, percent=None: None, wait=120):
+def uninstall(tool, learned, report=lambda phase, done=None, total=None: None, wait=120):
     entry = tool.installed
     exe = _exe_path(entry.uninstall)
     if not exe or not os.path.isfile(exe):
         raise RuntimeError("Das Deinstallationsprogramm wurde nicht gefunden.")
-    progress(f"{tool.title}: wird deinstalliert …", None)
+    report("uninstall")
     try:
         code = winrun.run_and_wait(exe, SILENT)
     except winrun.Cancelled as exc:

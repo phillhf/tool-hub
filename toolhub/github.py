@@ -17,6 +17,10 @@ class GitHubError(Exception):
     pass
 
 
+class DownloadCancelled(Exception):
+    pass
+
+
 class _KeepAuthOnSameHost(urllib.request.HTTPRedirectHandler):
     """Downloads leiten zu einem Speicher-Server weiter; der darf den Token nicht sehen."""
 
@@ -112,7 +116,7 @@ class Api:
         data, _ = self.get(f"/repos/{self.owner}/{repo}/releases/latest")
         return data
 
-    def download(self, asset, folder, progress=lambda percent: None):
+    def download(self, asset, folder, progress=lambda loaded, total: None, cancelled=lambda: False):
         """Lädt ein Release-Asset (auch aus privaten Repos) und prüft die SHA-256-Prüfsumme."""
         target = os.path.join(folder, asset["name"])
         digest = hashlib.sha256()
@@ -122,11 +126,15 @@ class Api:
                 total = int(response.headers.get("Content-Length") or asset.get("size") or 0)
                 loaded = 0
                 while chunk := response.read(256 * 1024):
+                    if cancelled():
+                        raise DownloadCancelled()
                     f.write(chunk)
                     digest.update(chunk)
                     loaded += len(chunk)
-                    if total:
-                        progress(min(100, loaded * 100 // total))
+                    progress(loaded, total)
+        except DownloadCancelled:
+            os.remove(target)
+            raise
         except urllib.error.HTTPError as exc:
             raise GitHubError(f"Download fehlgeschlagen (Fehler {exc.code}).") from exc
         except (urllib.error.URLError, TimeoutError, OSError) as exc:

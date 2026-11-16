@@ -10,6 +10,18 @@ installieren, starten, aktualisieren und deinstallieren – alles an einer Stell
 Das aktuelle `Tool-Hub-Setup-x.y.z.exe` unter [Releases](https://github.com/phillhf/tool-hub/releases) herunterladen
 und ausführen. Es braucht keine Administratorrechte. Tool-Hub aktualisiert sich danach selbst.
 
+## Bedienung
+
+- **Raster oder Tabelle** (oben rechts), helles oder dunkles Design (⚙ → Design, Standard: wie Windows).
+- **Filter** Alle · Installiert · Updates · Nicht installiert, dazu eine Suche (Strg+F).
+- Pro Tool ein Hauptknopf – **Installieren**, **Update auf x.y.z** oder **Öffnen** – und „…“ für Ordner öffnen,
+  Neu installieren, Deinstallieren, Release-Notizen und GitHub.
+- Aufträge laufen nacheinander; **Fortschritt** steht direkt beim Tool, ein Download lässt sich mit ✕ abbrechen.
+  **Alle aktualisieren** reiht alle Updates ein.
+- **Infobereich:** Beim Schließen läuft Tool-Hub als Symbol in der Taskleiste weiter, prüft alle 6 Stunden auf
+  Updates und meldet neue. Auf Wunsch startet es mit Windows (⚙). Ein zweiter Start holt nur das Fenster nach vorne.
+- Bewusst schlank: tkinter statt Web-Oberfläche, rund 60 MB Arbeitsspeicher.
+
 ## So funktioniert es
 
 - **Welche Tools?** Tool-Hub fragt GitHub nach allen Repos von `phillhf`. Jedes Repo, dessen neuestes Release ein
