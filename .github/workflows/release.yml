@@ -1,0 +1,80 @@
+name: Release
+
+# Startet mit einem Versions-Tag: git tag v1.0.0 && git push origin v1.0.0
+# Der Tag muss zu __version__ in toolhub/__init__.py passen.
+# Von Hand gestartet baut es nur und veröffentlicht nichts.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Abhängigkeiten
+        run: python -m pip install pyinstaller
+
+      - name: Tests
+        run: python -m unittest discover -s tests
+
+      - name: Version prüfen
+        id: version
+        shell: pwsh
+        run: |
+          $version = python -c "import toolhub; print(toolhub.__version__)"
+          if ($env:GITHUB_REF_TYPE -eq "tag" -and "v$version" -ne $env:GITHUB_REF_NAME) { throw "Tag $env:GITHUB_REF_NAME passt nicht zu Version $version" }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Inno Setup bereitstellen
+        shell: pwsh
+        run: if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+
+      - name: Programm und Installer bauen
+        shell: pwsh
+        run: ./installer/build.ps1 -SkipTests
+
+      - name: Fertiges Paket prüfen
+        shell: pwsh
+        run: |
+          $test = Start-Process dist\ToolHub\ToolHub.exe -ArgumentList "--selftest" -Wait -PassThru
+          if ($test.ExitCode -ne 0) { throw "Selbsttest fehlgeschlagen: $($test.ExitCode)" }
+
+      - name: Setup installieren und wieder entfernen
+        shell: pwsh
+        run: |
+          $setup = (Get-Item dist\Tool-Hub-Setup-*.exe).FullName
+          $folder = "C:\Tools\ToolHubTest"
+          $run = Start-Process $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=$folder" -Wait -PassThru
+          if ($run.ExitCode -ne 0) { throw "Setup fehlgeschlagen: $($run.ExitCode)" }
+          $test = Start-Process "$folder\ToolHub.exe" -ArgumentList "--selftest" -Wait -PassThru
+          if ($test.ExitCode -ne 0) { throw "Installiertes Programm fehlgeschlagen" }
+          Start-Process "$folder\unins000.exe" -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES" -Wait
+          for ($i = 0; $i -lt 30 -and (Test-Path "$folder\ToolHub.exe"); $i++) { Start-Sleep 1 }
+          if (Test-Path "$folder\ToolHub.exe") { throw "Deinstallation unvollständig" }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            dist/*.exe
+            dist/*.sha256
+
+      - name: Release veröffentlichen
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          gh release create $env:GITHUB_REF_NAME dist\Tool-Hub-Setup-$version.exe dist\Tool-Hub-Setup-$version.exe.sha256 `
+            --title "Tool-Hub $version" --generate-notes
