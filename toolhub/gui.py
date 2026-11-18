@@ -283,6 +283,7 @@ class App:
         self.loading, self.load_error = True, ""
         self.api.offline = False
         if not quiet:
+            self.no_setup.clear()  # von Hand neu laden: auch Repos ohne Setup sofort neu prüfen
             self.status_text = "SUCHE NACH TOOLS …"
             self._update_chrome()
             if not self.tools:
